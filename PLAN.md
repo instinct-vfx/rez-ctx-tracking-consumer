@@ -113,6 +113,7 @@ stores messages that can't be parsed. They are acked rather than retried forever
 | `LOG_LEVEL` | `INFO` |
 | `LOG_FORMAT` | `json` (`text` for local use) |
 | `METRICS_PORT` | `9100` (`0` disables) |
+| `SHUTDOWN_TIMEOUT_S` | `8` (time to store and ack what was received on SIGTERM; keep it below the container's stop grace period) |
 
 ## Recommended rezconfig
 
@@ -141,7 +142,8 @@ src/rez_ctx_consumer/
   config.py                    # Settings
   logging_config.py            # JSON/text logging
   payload.py                   # parse/validate -> EventRow (+ reject reasons)
-  amqp.py                      # topology, consume, batching, acks
+  amqp.py                      # robust connection, topology, consume
+  batcher.py                   # batching, store with retry, acks (library-independent)
   db.py                        # pool, batch insert with row-by-row fallback, rejects
   migrations.py                # runner for sql/NNNN_*.sql (advisory lock, checksums)
   partitions.py                # monthly partitions, moving rows out of DEFAULT
@@ -172,9 +174,15 @@ tools/
    IntegrityError) is retried row by row with savepoints, and the rows that still
    fail are rejected. At startup the consumer waits for the DB (with backoff) and
    fails fast if `EXTRA_FIELD_COLUMNS` names a column that doesn't exist.
-4. **AMQP consumer.** Topology in both modes, batching and acks, handling of DB
-   outages, graceful shutdown. Integration tests cover a broker restart, a DB
-   restart, and SIGTERM with an unflushed batch.
+4. **AMQP consumer** (done). Topology in both modes, batching and acks, handling
+   of DB outages, graceful shutdown. Integration tests cover a broker restart, a
+   DB outage, and SIGTERM with an unflushed batch. Other notes:
+   - The batching logic (`batcher.py`) is independent of aio-pika.
+   - Messages whose channel closed before they were stored are dropped, because
+     the broker redelivers them; this avoids duplicate rows.
+   - `aio_pika.connect_robust()` leaks its reconnect task when the first attempt
+     times out or is cancelled, so the consumer creates the `RobustConnection`
+     itself and closes it when an attempt fails.
 5. **Container and operations.** docker-compose (`docker compose up postgres`
    starts just a test DB), `.env.example`, healthcheck, metrics.
 6. **End to end.** A container with rez installed via pip and a tiny package

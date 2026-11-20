@@ -13,6 +13,8 @@ import psycopg
 from psycopg_pool import PoolTimeout
 
 from rez_ctx_consumer import __version__
+from rez_ctx_consumer.amqp import AmqpConsumer
+from rez_ctx_consumer.batcher import Batcher
 from rez_ctx_consumer.config import Settings
 from rez_ctx_consumer.db import EventStore, Pool, create_pool
 from rez_ctx_consumer.migrations import migrate
@@ -110,12 +112,53 @@ async def run(settings: Settings, stop: asyncio.Event | None = None) -> None:
             return
         store = EventStore(pool, list(settings.extra_field_columns.values()))
         await store.verify_schema()
+        batcher = Batcher(
+            store,
+            batch_size=settings.batch_size,
+            max_wait_s=settings.batch_max_wait_ms / 1000,
+            extra_field_columns=settings.extra_field_columns,
+        )
+        consumer = AmqpConsumer(settings, batcher.add)
 
         maintenance = asyncio.create_task(maintain_partitions(pool, stop))
-        # The AMQP consumer gets wired in here in phase 4 (see PLAN.md).
-        log.info("ready")
-        await stop.wait()
-        await maintenance
+        flusher = asyncio.create_task(batcher.run(stop))
+        try:
+            if not await until_stopped(consumer.start(stop), stop):
+                return
+            log.info("ready")
+            await _until_stop_or_done(stop, flusher)
+            if not stop.is_set():
+                flusher.result()  # raises the flusher's error
+                raise RuntimeError("batch flusher exited unexpectedly")
+            log.info("shutting down", extra={"pending": batcher.pending})
+        finally:
+            stop.set()  # also on errors, so every loop winds down
+            await consumer.stop_consuming()
+            await _drain(flusher, batcher, settings.shutdown_timeout_s)
+            await consumer.close()
+            await maintenance
     finally:
         await pool.close()
         log.info("stopped")
+
+
+async def _until_stop_or_done(stop: asyncio.Event, task: asyncio.Task[None]) -> None:
+    stopper = asyncio.ensure_future(stop.wait())
+    try:
+        await asyncio.wait({stopper, task}, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        stopper.cancel()
+
+
+async def _drain(flusher: asyncio.Task[None], batcher: Batcher, timeout_s: float) -> None:
+    """Let the flusher store what was received; give up after ``timeout_s``."""
+    if flusher.done():
+        return
+    try:
+        await asyncio.wait_for(asyncio.shield(flusher), timeout_s)
+    except TimeoutError:
+        log.warning("shutdown timeout reached before all messages were stored")
+        flusher.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await flusher
+        await batcher.release()

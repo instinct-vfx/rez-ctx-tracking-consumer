@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     log_level: LogLevel = "INFO"
     log_format: Literal["json", "text"] = "json"
     metrics_port: int = Field(default=9100, ge=0, le=65535)  # 0 disables
+    # Time allowed on SIGTERM to store and ack what was already received. Keep it
+    # below the container's stop grace period (Docker default: 10 s); anything
+    # not stored by then is returned to the broker.
+    shutdown_timeout_s: float = Field(default=8.0, gt=0)
 
     @field_validator("amqp_binding_keys", "amqp_default_exchange_queues", mode="before")
     @classmethod

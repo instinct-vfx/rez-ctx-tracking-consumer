@@ -3,8 +3,9 @@
 A long-running service that consumes [rez](https://github.com/AcademySoftwareFoundation/rez)
 context tracking events from an AMQP broker (e.g. RabbitMQ) and stores them in PostgreSQL.
 
-> **Status:** early development. Message parsing and the database layer (schema,
-> migrations, monthly partitions, batch writes) are done; consuming from AMQP is next.
+> **Status:** early development. The consumer works end to end: it consumes from
+> RabbitMQ, stores events in batches, survives broker and database outages and shuts
+> down cleanly. Next up: docker-compose, health checks and metrics.
 > See [PLAN.md](PLAN.md) for the design and roadmap.
 
 Requires PostgreSQL 15 or newer. The consumer creates its schema and monthly
