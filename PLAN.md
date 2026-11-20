@@ -39,7 +39,7 @@ Taken from `ResolvedContext._track_context`, `rez/utils/amqp.py` and `rezconfig.
 | Partitioning | Monthly range partitions on `received_at`, created by the consumer (current and next month at startup and once a day) with a DEFAULT partition as a safety net. No pg_partman. |
 | Retention | None. Removing a month later is a manual `DETACH`/`DROP PARTITION`. |
 | Migrations | Plain numbered SQL files, applied at startup under `pg_advisory_lock`. |
-| Target Postgres | Self-managed, 13+ (tested on 17). |
+| Target Postgres | Self-managed, 15+. CI tests 15, 17 and 18; 13 and 14 are end-of-life. |
 
 ## Schema
 
@@ -142,9 +142,11 @@ src/rez_ctx_consumer/
   logging_config.py            # JSON/text logging
   payload.py                   # parse/validate -> EventRow (+ reject reasons)
   amqp.py                      # topology, consume, batching, acks
-  db.py                        # pool, migrations, partitions, batch insert
+  db.py                        # pool, batch insert with row-by-row fallback, rejects
+  migrations.py                # runner for sql/NNNN_*.sql (advisory lock, checksums)
+  partitions.py                # monthly partitions, moving rows out of DEFAULT
   health.py                    # /healthz, /metrics
-  migrations/0001_init.sql
+  sql/0001_init.sql
 tests/
   fixtures/rez-<version>/      # real rez messages, captured by tools/
   unit/
@@ -164,8 +166,12 @@ tools/
    `{"key": "filesystem.variant", "variables": {"name", "version", "index",
    "location", "repository_type"}}`, and `index` is `null` for packages without
    variants. A failed resolve sends `resolved_packages: []`.
-3. **DB layer.** Migrations runner, `0001_init.sql`, partition management, batch
-   insert, rejects table, and integration tests against Postgres.
+3. **DB layer** (done). Migrations runner, `0001_init.sql`, partition
+   management, batch insert, rejects table, and integration tests against
+   Postgres. A batch that fails because of a row's data (DataError or
+   IntegrityError) is retried row by row with savepoints, and the rows that still
+   fail are rejected. At startup the consumer waits for the DB (with backoff) and
+   fails fast if `EXTRA_FIELD_COLUMNS` names a column that doesn't exist.
 4. **AMQP consumer.** Topology in both modes, batching and acks, handling of DB
    outages, graceful shutdown. Integration tests cover a broker restart, a DB
    restart, and SIGTERM with an unflushed batch.

@@ -3,8 +3,12 @@
 A long-running service that consumes [rez](https://github.com/AcademySoftwareFoundation/rez)
 context tracking events from an AMQP broker (e.g. RabbitMQ) and stores them in PostgreSQL.
 
-> **Status:** early development. The project skeleton is in place; consuming and storing
-> events is being built. See [PLAN.md](PLAN.md) for the design and roadmap.
+> **Status:** early development. Message parsing and the database layer (schema,
+> migrations, monthly partitions, batch writes) are done; consuming from AMQP is next.
+> See [PLAN.md](PLAN.md) for the design and roadmap.
+
+Requires PostgreSQL 15 or newer. The consumer creates its schema and monthly
+partitions itself; no extensions are needed.
 
 ## Development
 
@@ -12,7 +16,9 @@ Requires [uv](https://docs.astral.sh/uv/).
 
 ```sh
 uv sync                    # create .venv with runtime + dev dependencies
-uv run pytest              # tests
+uv run pytest              # all tests (integration tests need Docker)
+uv run pytest -m "not integration"            # unit tests only
+POSTGRES_IMAGE=postgres:15 uv run pytest -m integration   # other Postgres version
 uv run ruff check          # lint
 uv run ruff format         # format
 uv run mypy                # type-check

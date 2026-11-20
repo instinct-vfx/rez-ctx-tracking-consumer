@@ -64,6 +64,13 @@ RESERVED_COLUMNS: Final = frozenset({"id", *EVENT_COLUMNS})
 _INVALID_CHARS = re.compile("[\x00\ud800-\udfff]")
 
 
+def clean_text(text: str) -> str:
+    """Make a string storable in Postgres text: drop NUL, replace lone surrogates."""
+    if _INVALID_CHARS.search(text) is None:
+        return text
+    return _INVALID_CHARS.sub(lambda m: "" if m.group() == "\x00" else "�", text)
+
+
 class PayloadError(ValueError):
     """The message can't be stored as an event; it goes to the rejects table."""
 
@@ -141,7 +148,7 @@ def parse_message(
 
     return EventRow(
         received_at=received_at or datetime.now(UTC),
-        routing_key=routing_key,
+        routing_key=clean_text(routing_key),
         action=action,
         host=top["host"],
         username=top["username"],
@@ -179,10 +186,10 @@ def _clean(value: Any, issues: list[str]) -> Any:
 
     def fix(s: str) -> str:
         nonlocal replaced
-        if _INVALID_CHARS.search(s) is None:
-            return s
-        replaced = True
-        return _INVALID_CHARS.sub(lambda m: "" if m.group() == "\x00" else "�", s)
+        cleaned = clean_text(s)
+        if cleaned is not s:
+            replaced = True
+        return cleaned
 
     def walk(v: Any) -> Any:
         if isinstance(v, str):

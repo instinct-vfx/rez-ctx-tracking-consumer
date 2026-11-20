@@ -21,6 +21,7 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
     "ruff>=0.8",
+    "testcontainers>=4.9",
 ]
 
 [build-system]
@@ -41,6 +42,10 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "ASYNC", "RUF", "PT"]
 strict = true
 files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["docker.*"]  # docker-py ships no type information (only used in tests)
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

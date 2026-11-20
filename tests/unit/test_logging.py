@@ -4,7 +4,7 @@ import json
 import logging
 import sys
 
-from rez_ctx_consumer.logging_config import JsonFormatter
+from rez_ctx_consumer.logging_config import JsonFormatter, TextFormatter
 
 
 def make_record(**extra: object) -> logging.LogRecord:
@@ -37,3 +37,12 @@ def test_json_formatter_exception() -> None:
         record.exc_info = sys.exc_info()
     entry = json.loads(JsonFormatter().format(record))
     assert "ValueError: boom" in entry["exc"]
+
+
+def test_text_formatter_appends_extra() -> None:
+    line = TextFormatter().format(make_record(partition="p_2026m11", rows=3))
+    assert line.endswith("test.logger: hello x [partition='p_2026m11' rows=3]")
+
+
+def test_text_formatter_without_extra() -> None:
+    assert TextFormatter().format(make_record()).endswith("test.logger: hello x")
