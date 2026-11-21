@@ -97,3 +97,31 @@ async def test_concurrent_replicas(pool: Pool) -> None:
 
     results = await asyncio.gather(one(), one(), one())
     assert sorted(len(r) for r in results) == [0, 0, 2]
+
+
+async def test_documented_partition_removal_and_restore(conn: AsyncConnection[Any]) -> None:
+    """The recipe in docs/operations.md: detach, drop or re-attach a month."""
+    await migrate(conn)
+    await ensure_partitions(conn, now=datetime(2025, 1, 10, tzinfo=UTC))
+    await insert(conn, datetime(2025, 1, 15, tzinfo=UTC))
+
+    await conn.execute("ALTER TABLE rez_context_event DETACH PARTITION rez_context_event_y2025m01")
+    cur = await conn.execute("SELECT count(*) FROM rez_context_event")
+    assert await cur.fetchone() == (0,)
+    cur = await conn.execute("SELECT count(*) FROM rez_context_event_y2025m01")
+    assert await cur.fetchone() == (1,)  # standalone table, ready to archive
+
+    await conn.execute(
+        "ALTER TABLE rez_context_event ATTACH PARTITION rez_context_event_y2025m01"
+        " FOR VALUES FROM ('2025-01-01 00:00+00') TO ('2025-02-01 00:00+00')"
+    )
+    cur = await conn.execute("SELECT count(*) FROM rez_context_event")
+    assert await cur.fetchone() == (1,)
+
+    await conn.execute("ALTER TABLE rez_context_event DETACH PARTITION rez_context_event_y2025m01")
+    await conn.execute("DROP TABLE rez_context_event_y2025m01")
+    # The consumer doesn't recreate a month that is in the past.
+    assert await ensure_partitions(conn, now=NOV_2026) == [
+        "rez_context_event_y2026m11",
+        "rez_context_event_y2026m12",
+    ]

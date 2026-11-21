@@ -197,5 +197,11 @@ tools/
    conflicting `rez-env`. The test checks that exactly those four events land in
    Postgres: three `created` (one `failed`) and one `sourced`, with the extra
    field expanded. It's opt-in (`pytest -m e2e`) and has its own CI job.
-7. **Docs.** README with the rezconfig snippet, example queries, and how to
-   remove old partitions by hand.
+7. **Docs** (done). The README is the entry point (what it's for, quick start,
+   rezconfig). `docs/queries.md` is a query cookbook; every SQL block is run
+   against real rez data by `tests/integration/test_docs.py`.
+   `docs/operations.md` covers deployment (Postgres roles and schema), the
+   configuration reference, rez setup, delivery guarantees, metrics and alerts,
+   sizing (measured: about 2 KB per event, about 1,400 events/s drain rate),
+   upgrades, removing old partitions (the recipe is tested), mapping extra
+   fields to columns, and troubleshooting.

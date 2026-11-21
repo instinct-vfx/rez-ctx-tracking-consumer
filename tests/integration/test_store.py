@@ -136,3 +136,40 @@ async def test_bad_row_is_rejected_others_stored(migrated: Pool) -> None:
     [reject] = await fetch_all(migrated, "rez_context_event_reject")
     assert reject["body"] == bad[1]
     assert reject["error"].startswith("insert failed:")
+
+
+async def test_dedicated_schema_via_search_path(database: str) -> None:
+    """Postgres 15+ only lets the owner create tables in ``public``, so the docs
+    recommend a role that owns its own schema. Everything must then work through
+    ``search_path`` alone."""
+    from psycopg import AsyncConnection
+    from psycopg.conninfo import make_conninfo
+    from psycopg_pool import AsyncConnectionPool
+
+    from rez_ctx_consumer.migrations import migrate
+    from rez_ctx_consumer.partitions import ensure_partitions
+
+    async with await AsyncConnection.connect(database, autocommit=True) as admin:
+        await admin.execute("CREATE SCHEMA rez_tracking")
+    dsn = make_conninfo(database, options="-csearch_path=rez_tracking")
+    pool: Pool = AsyncConnectionPool(dsn, min_size=1, max_size=2, open=False)
+    await pool.open(wait=True)
+    try:
+        async with pool.connection() as conn:
+            await migrate(conn)
+            assert len(await ensure_partitions(conn)) == 2
+            await conn.execute("ALTER TABLE rez_context_event ADD COLUMN show_name text")
+        store = EventStore(pool, ["show_name"])
+        await store.verify_schema()
+        await store.store([message({"show": "show_name"}, show="demo")])
+    finally:
+        await pool.close()
+
+    async with await AsyncConnection.connect(database) as conn:
+        cur = await conn.execute(
+            "SELECT schemaname, count(*) FROM pg_tables"
+            " WHERE tablename LIKE 'rez_c%' GROUP BY schemaname"
+        )
+        assert await cur.fetchall() == [("rez_tracking", 6)]  # parent, 3 partitions, reject, runner
+        cur = await conn.execute("SELECT show_name FROM rez_tracking.rez_context_event")
+        assert await cur.fetchall() == [("demo",)]
