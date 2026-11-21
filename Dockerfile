@@ -24,4 +24,8 @@ COPY --from=build /app/.venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 USER app
+# /healthz and /metrics (METRICS_PORT)
+EXPOSE 9100
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD ["rez-ctx-consumer", "healthcheck"]
 ENTRYPOINT ["rez-ctx-consumer"]

@@ -1,0 +1,68 @@
+# Local stack for trying out and testing the consumer:
+#   PostgreSQL, RabbitMQ (with management UI) and the consumer itself.
+#
+#   docker compose up -d --build      # everything
+#   docker compose up -d postgres     # just a test database
+#   docker compose down -v            # stop and delete all data
+#
+# Settings can be overridden in a .env file next to this one (see .env.example).
+# The defaults are for local use only; don't expose this stack as-is.
+
+name: rez-ctx-tracking
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rez}
+      POSTGRES_USER: ${POSTGRES_USER:-rez}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rez}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rez}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rez}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  consumer:
+    build: .
+    image: rez-ctx-tracking-consumer:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      AMQP_URL: amqp://${RABBITMQ_USER:-rez}:${RABBITMQ_PASSWORD:-rez}@rabbitmq:5672/
+      PG_DSN: postgresql://${POSTGRES_USER:-rez}:${POSTGRES_PASSWORD:-rez}@postgres:5432/${POSTGRES_DB:-rez}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+      EXTRA_FIELD_COLUMNS: ${EXTRA_FIELD_COLUMNS:-{}}
+    ports:
+      - "${METRICS_PORT:-9100}:9100"
+    # Must exceed SHUTDOWN_TIMEOUT_S (default 8 s) so a stop can finish storing.
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  rabbitmq-data:

@@ -82,7 +82,9 @@ class AmqpConsumer:
 
     @property
     def connected(self) -> bool:
-        return self._connection is not None and not self._connection.is_closed
+        """True while connected; False before connecting and while reconnecting."""
+        conn = self._connection
+        return conn is not None and not conn.is_closed and conn.connected.is_set()
 
     async def start(self, stop: asyncio.Event) -> bool:
         """Connect (retrying until reachable), declare, start consuming.

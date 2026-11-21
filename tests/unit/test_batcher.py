@@ -230,3 +230,35 @@ async def test_release_nacks_pending_and_in_flight(stop: asyncio.Event) -> None:
     assert pending.nacked
     assert not closed.nacked  # its channel is gone; the broker requeues it anyway
     assert batcher.pending == 0
+
+
+async def test_metrics_and_failure_tracking(stop: asyncio.Event) -> None:
+    store = FakeStore(fail_times=1)
+    batcher = Batcher(store, batch_size=4, max_wait_s=3600, retry_initial_s=0.05)
+
+    def sample(name: str, **labels: str) -> float | None:
+        return batcher.metrics.registry.get_sample_value(f"rez_ctx_consumer_{name}", labels)
+
+    issue = json.dumps({"action": "created", "context": {"status": 5}}).encode()
+    for d in (
+        delivery(1),
+        FakeDelivery(b"nope"),
+        FakeDelivery(issue),
+        delivery(2, channel_open=False),
+    ):
+        batcher.add(d)
+    task = asyncio.create_task(batcher.run(stop))
+    await eventually(lambda: store.attempts >= 1)
+    await eventually(lambda: batcher.failing_for() is not None)
+    await eventually(lambda: store.calls)
+    assert batcher.failing_for() is None
+
+    assert sample("messages_received_total") == 4
+    assert sample("events_stored_total") == 2
+    assert sample("messages_rejected_total", stage="parse") == 1
+    assert sample("field_issues_total") == 1
+    assert sample("store_errors_total") == 1
+    assert sample("dropped_closed_channel_total") == 1
+    assert sample("batch_size_count") == 1
+    assert (sample("last_flush_timestamp_seconds") or 0) > 0
+    await finish(task, stop)

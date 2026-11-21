@@ -33,4 +33,5 @@ def env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
             monkeypatch.delenv(name)
     monkeypatch.setenv("AMQP_URL", "amqp://user:amqp-secret@broker:5672/")
     monkeypatch.setenv("PG_DSN", "postgresql://user:pg-secret@db:5432/rez")
+    monkeypatch.setenv("METRICS_PORT", "0")  # tests that need the server pick a free port
     return monkeypatch

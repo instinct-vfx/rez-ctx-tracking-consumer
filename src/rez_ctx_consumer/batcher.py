@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from rez_ctx_consumer.db import Reject, StoreResult
+from rez_ctx_consumer.metrics import Metrics
 from rez_ctx_consumer.payload import EventRow, PayloadError, parse_message
 
 log = logging.getLogger(__name__)
@@ -72,6 +73,7 @@ class Batcher:
         retry_initial_s: float = 1.0,
         retry_max_s: float = 30.0,
         clock: Callable[[], float] = time.monotonic,
+        metrics: Metrics | None = None,
     ) -> None:
         self._store = store
         self._batch_size = batch_size
@@ -83,15 +85,23 @@ class Batcher:
         self._pending: list[_Item] = []
         self._in_flight: list[_Item] = []
         self._wake = asyncio.Event()
-        self.last_flush_at: float | None = None  # monotonic; for health checks
+        self._failing_since: float | None = None  # monotonic; first failed store attempt
+        self.metrics = metrics or Metrics()
 
     @property
     def pending(self) -> int:
         return len(self._pending) + len(self._in_flight)
 
+    def failing_for(self) -> float | None:
+        """Seconds the current batch has been failing to store, or None."""
+        if self._failing_since is None:
+            return None
+        return self._clock() - self._failing_since
+
     def add(self, delivery: Delivery) -> None:
         """Accept one delivery (called from the consumer callback)."""
         received_at = datetime.now(UTC)
+        self.metrics.messages_received.inc()
         row: EventRow | None = None
         reject: Reject | None = None
         try:
@@ -108,6 +118,7 @@ class Batcher:
             reject = Reject(received_at, delivery.routing_key, delivery.body, str(exc))
         else:
             if row.issues:
+                self.metrics.field_issues.inc()
                 log.warning(
                     "stored message with field issues",
                     extra={"routing_key": row.routing_key, "issues": list(row.issues)},
@@ -156,16 +167,19 @@ class Batcher:
                 waiter.cancel()
 
     async def _flush(self, batch: list[_Item]) -> None:
+        started = self._clock()
         delay = self._retry_initial_s
         while True:
             live = [item for item in batch if item.delivery.channel_open]
             if len(live) < len(batch):
+                self.metrics.dropped_closed_channel.inc(len(batch) - len(live))
                 log.info(
                     "dropped messages from a closed channel; the broker redelivers them",
                     extra={"count": len(batch) - len(live)},
                 )
                 batch = live
             if not batch:
+                self._failing_since = None
                 return
             events = [(item.row, item.delivery.body) for item in batch if item.row is not None]
             rejects = [item.reject for item in batch if item.reject is not None]
@@ -173,6 +187,9 @@ class Batcher:
                 result = await self._store.store(events, rejects)
                 break
             except Exception as exc:
+                self.metrics.store_errors.inc()
+                if self._failing_since is None:
+                    self._failing_since = self._clock()
                 log.error(
                     "storing batch failed, retrying",
                     extra={
@@ -192,7 +209,16 @@ class Batcher:
                 # Channel closed after the commit: the broker redelivers and
                 # the row is stored twice. Accepted (at-least-once).
                 unacked += 1
-        self.last_flush_at = self._clock()
+
+        self._failing_since = None
+        m = self.metrics
+        m.events_stored.inc(result.stored)
+        m.messages_rejected.labels("parse").inc(len(rejects))
+        m.messages_rejected.labels("insert").inc(result.rejected - len(rejects))
+        m.ack_failures.inc(unacked)
+        m.batch_size.observe(len(batch))
+        m.batch_seconds.observe(self._clock() - started)
+        m.last_flush.set_to_current_time()
         log.debug(
             "flushed batch",
             extra={"stored": result.stored, "rejected": result.rejected, "unacked": unacked},

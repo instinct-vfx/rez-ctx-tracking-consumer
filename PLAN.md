@@ -147,7 +147,8 @@ src/rez_ctx_consumer/
   db.py                        # pool, batch insert with row-by-row fallback, rejects
   migrations.py                # runner for sql/NNNN_*.sql (advisory lock, checksums)
   partitions.py                # monthly partitions, moving rows out of DEFAULT
-  health.py                    # /healthz, /metrics
+  health.py                    # /healthz, /metrics HTTP server
+  metrics.py                   # Prometheus metrics (own registry per instance)
   sql/0001_init.sql
 tests/
   fixtures/rez-<version>/      # real rez messages, captured by tools/
@@ -183,8 +184,13 @@ tools/
    - `aio_pika.connect_robust()` leaks its reconnect task when the first attempt
      times out or is cancelled, so the consumer creates the `RobustConnection`
      itself and closes it when an attempt fails.
-5. **Container and operations.** docker-compose (`docker compose up postgres`
-   starts just a test DB), `.env.example`, healthcheck, metrics.
+5. **Container and operations** (done). docker-compose (`docker compose up
+   postgres` starts just a test DB), `.env.example`, healthcheck, metrics.
+   `/healthz` is 503 until the service is ready, while the broker is
+   disconnected, and once storing has failed for 60 s. An idle consumer is
+   healthy. The HTTP server is plain asyncio (two read-only endpoints need no
+   framework); the Docker `HEALTHCHECK` uses `rez-ctx-consumer healthcheck`,
+   because the slim image has no curl.
 6. **End to end.** A container with rez installed via pip and a tiny package
    repository runs `rez-env` and sources an `.rxt`. The test checks that both a
    `created` and a `sourced` row land in Postgres.

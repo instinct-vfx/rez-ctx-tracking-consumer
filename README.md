@@ -3,13 +3,54 @@
 A long-running service that consumes [rez](https://github.com/AcademySoftwareFoundation/rez)
 context tracking events from an AMQP broker (e.g. RabbitMQ) and stores them in PostgreSQL.
 
-> **Status:** early development. The consumer works end to end: it consumes from
-> RabbitMQ, stores events in batches, survives broker and database outages and shuts
-> down cleanly. Next up: docker-compose, health checks and metrics.
-> See [PLAN.md](PLAN.md) for the design and roadmap.
+> **Status:** early development, but working end to end. See [PLAN.md](PLAN.md)
+> for the design and roadmap.
 
 Requires PostgreSQL 15 or newer. The consumer creates its schema and monthly
 partitions itself; no extensions are needed.
+
+## Quick start
+
+```sh
+docker compose up -d --build     # PostgreSQL, RabbitMQ and the consumer
+docker compose up -d postgres    # or: just a database for testing
+```
+
+Copy `.env.example` to `.env` to change credentials or host ports. Then point rez
+at the broker (e.g. in a `rezconfig.py` referenced by `REZ_CONFIG_FILE`):
+
+```python
+context_tracking_host = "localhost:5672"
+context_tracking_amqp = {
+    "userid": "rez",
+    "password": "rez",
+    "connect_timeout": 10,
+    "exchange_name": "rez.context",  # the exchange the consumer declares
+    "exchange_routing_key": "REZ.CONTEXT",
+    "message_delivery_mode": 2,  # persistent messages
+}
+```
+
+Every `rez-env` (and every load of an `.rxt` file) now produces a row:
+
+```sh
+docker compose exec postgres psql -U rez -c   "SELECT received_at, action, username, host, status, resolved_packages
+     FROM rez_context_event ORDER BY received_at DESC LIMIT 10"
+```
+
+The RabbitMQ management UI is at <http://localhost:15672> (rez / rez).
+
+## Health and metrics
+
+The consumer serves two endpoints on `METRICS_PORT` (default 9100; `0` disables both):
+
+- `/healthz`: `200` when it is consuming and storing, `503` otherwise, with a JSON
+  body saying why (not ready yet, broker disconnected, or storing batches has failed
+  for over a minute). An idle consumer is healthy. The Docker image's `HEALTHCHECK`
+  uses it via `rez-ctx-consumer healthcheck`.
+- `/metrics`: Prometheus metrics (`rez_ctx_consumer_*`): messages received, events
+  stored, rejects by stage, store errors, batch sizes and durations, pending messages,
+  broker connection state, time of the last stored batch.
 
 ## Development
 

@@ -23,7 +23,7 @@ from aio_pika.exceptions import ChannelClosed
 from rez_ctx_consumer.app import run
 from rez_ctx_consumer.config import Settings
 
-from .conftest import Broker, start_rabbitmq
+from .conftest import Broker, _free_port, start_rabbitmq
 
 FIXTURES = sorted((Path(__file__).parent.parent / "fixtures").glob("rez-*/*.json"))
 
@@ -265,3 +265,48 @@ async def _set_db_available(admin_dsn: str, dbname: str, available: bool) -> Non
                 "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s",
                 (dbname,),
             )
+
+
+async def test_health_and_metrics(
+    consumer_env: pytest.MonkeyPatch,
+    rabbitmq: Broker,
+    postgres: str,
+    database: str,
+    names: dict[str, str],
+) -> None:
+    port = _free_port()
+    consumer_env.setenv("METRICS_PORT", str(port))
+    dbname = str(psycopg.conninfo.conninfo_to_dict(database)["dbname"])
+
+    await _set_db_available(postgres, dbname, False)
+    async with service(consumer_env):
+        # Up while the database isn't: reachable, but not healthy yet.
+        await eventually(lambda: _equals(_http_status(port, "/healthz"), 503))
+        await _set_db_available(postgres, dbname, True)
+        await eventually(lambda: _equals(_http_status(port, "/healthz"), 200), timeout=60)
+
+        for routing_key, payload in fixture_messages():
+            await publish(rabbitmq.url, names["exchange"], routing_key, payload)
+        await eventually(lambda: _equals(count(database), len(FIXTURES)))
+
+        _, metrics = await _http_get(port, "/metrics")
+        assert f"rez_ctx_consumer_events_stored_total {float(len(FIXTURES))}" in metrics
+        assert "rez_ctx_consumer_amqp_connected 1.0" in metrics
+        assert "rez_ctx_consumer_pending_messages 0.0" in metrics
+
+
+async def _http_get(port: int, path: str) -> tuple[int, str]:
+    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    writer.write(f"GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n".encode())
+    await writer.drain()
+    response = await reader.read()
+    writer.close()
+    head, _, body = response.decode().partition("\r\n\r\n")
+    return int(head.split()[1]), body
+
+
+async def _http_status(port: int, path: str) -> int | None:
+    try:
+        return (await _http_get(port, path))[0]
+    except OSError:
+        return None
