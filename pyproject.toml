@@ -47,6 +47,7 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "ASYNC", "RUF", "PT"]
 [tool.mypy]
 strict = true
 files = ["src", "tests"]
+exclude = ["^tests/e2e/rez/"]  # rez client files (package.py in dirs like 2.1.0)
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
@@ -55,10 +56,13 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# e2e builds Docker images and takes a few minutes: run it with `pytest -m e2e`.
+addopts = ["-m", "not e2e"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 # Fail a hanging test (e.g. a leaked reconnect loop) instead of stalling CI.
 timeout = 180
 markers = [
     "integration: needs Docker (RabbitMQ/Postgres containers)",
+    "e2e: real rez against the docker-compose stack (opt-in: -m e2e)",
 ]

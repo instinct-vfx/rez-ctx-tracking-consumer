@@ -58,9 +58,10 @@ Requires [uv](https://docs.astral.sh/uv/).
 
 ```sh
 uv sync                    # create .venv with runtime + dev dependencies
-uv run pytest              # all tests (integration tests need Docker)
+uv run pytest              # unit + integration tests (integration needs Docker)
 uv run pytest -m "not integration"            # unit tests only
 POSTGRES_IMAGE=postgres:15 uv run pytest -m integration   # other Postgres version
+uv run pytest -m e2e       # real rez against the compose stack (builds images)
 uv run ruff check          # lint
 uv run ruff format         # format
 uv run mypy                # type-check

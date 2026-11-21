@@ -55,6 +55,17 @@ jobs:
       - run: uv sync --locked
       - run: uv run pytest -m integration
 
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run pytest -m e2e -s
+
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 20

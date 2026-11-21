@@ -191,8 +191,11 @@ tools/
    healthy. The HTTP server is plain asyncio (two read-only endpoints need no
    framework); the Docker `HEALTHCHECK` uses `rez-ctx-consumer healthcheck`,
    because the slim image has no curl.
-6. **End to end.** A container with rez installed via pip and a tiny package
-   repository runs `rez-env` and sources an `.rxt`. The test checks that both a
-   `created` and a `sourced` row land in Postgres.
+6. **End to end** (done). `tests/e2e/` adds a rez client container (rez 3.5.0
+   via pip, a tiny package repository, and the README's rezconfig) to the
+   compose stack. It runs `rez-env`, `rez-env --output`, `rez-env --input` and a
+   conflicting `rez-env`. The test checks that exactly those four events land in
+   Postgres: three `created` (one `failed`) and one `sourced`, with the extra
+   field expanded. It's opt-in (`pytest -m e2e`) and has its own CI job.
 7. **Docs.** README with the rezconfig snippet, example queries, and how to
    remove old partitions by hand.

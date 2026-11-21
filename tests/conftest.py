@@ -14,6 +14,7 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 INTEGRATION_DIR = Path(__file__).parent / "integration"
+E2E_DIR = Path(__file__).parent / "e2e"
 
 # Env vars read by Settings; cleared so a developer's shell can't leak into tests.
 _SETTINGS_ENV = [name.upper() for name in Settings.model_fields]
@@ -23,6 +24,8 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if INTEGRATION_DIR in item.path.parents:
             item.add_marker(pytest.mark.integration)
+        elif E2E_DIR in item.path.parents:
+            item.add_marker(pytest.mark.e2e)
 
 
 @pytest.fixture
