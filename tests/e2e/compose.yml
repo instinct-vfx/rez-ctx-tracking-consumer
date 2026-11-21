@@ -1,0 +1,16 @@
+# Override for the end-to-end test, used on top of the main docker-compose.yml:
+#   docker compose -f docker-compose.yml -f tests/e2e/compose.yml run --rm rez
+# Paths are relative to the repository root (the directory of the first file).
+
+services:
+  consumer:
+    environment:
+      BATCH_MAX_WAIT_MS: "200"
+
+  rez:
+    build: tests/e2e/rez
+    image: rez-ctx-tracking-e2e-rez:local
+    depends_on:
+      consumer:
+        condition: service_healthy
+    profiles: ["e2e"]  # only started via `docker compose run rez`

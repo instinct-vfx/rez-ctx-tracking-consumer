@@ -1,0 +1,68 @@
+[project]
+name = "rez-ctx-tracking-consumer"
+version = "0.1.0"
+description = "Consumes rez context tracking events from AMQP and stores them in PostgreSQL."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "aio-pika>=9.5",
+    "prometheus-client>=0.21",
+    "psycopg[binary,pool]>=3.2",
+    "pydantic-settings>=2.7",
+]
+
+[project.scripts]
+rez-ctx-consumer = "rez_ctx_consumer.__main__:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "pytest-timeout>=2.3",
+    "ruff>=0.8",
+    "testcontainers>=4.9",
+]
+
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rez_ctx_consumer"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "ASYNC", "RUF", "PT"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests poll for conditions with a deadline; that's intended there.
+"tests/**" = ["ASYNC109", "ASYNC110"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+exclude = ["^tests/e2e/rez/"]  # rez client files (package.py in dirs like 2.1.0)
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["docker.*"]  # docker-py ships no type information (only used in tests)
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# e2e builds Docker images and takes a few minutes: run it with `pytest -m e2e`.
+addopts = ["-m", "not e2e"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+# Fail a hanging test (e.g. a leaked reconnect loop) instead of stalling CI.
+timeout = 180
+markers = [
+    "integration: needs Docker (RabbitMQ/Postgres containers)",
+    "e2e: real rez against the docker-compose stack (opt-in: -m e2e)",
+]

@@ -1,0 +1,27 @@
+{
+  "rez_version": "3.5.0",
+  "routing_key": "REZ.CONTEXT.CREATED",
+  "payload": {
+    "action": "created",
+    "context": {
+      "resolved_packages": [],
+      "timestamp": 1795214706,
+      "implicit_packages": [
+        "~platform==windows",
+        "~arch==AMD64",
+        "~os==windows-10.0.26300.SP0"
+      ],
+      "package_requests": [
+        "foo",
+        "!bar"
+      ],
+      "status": "failed",
+      "from_cache": false,
+      "solve_time": 0.0010006427764892578,
+      "load_time": 0.0
+    },
+    "rez_version": "3.5.0",
+    "host": "ws01.example.com",
+    "user": "artist"
+  }
+}
