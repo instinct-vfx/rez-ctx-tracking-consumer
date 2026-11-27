@@ -43,8 +43,6 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "N", "ASYNC", "RUF", "PT"]
 [tool.ruff.lint.per-file-ignores]
 # Tests poll for conditions with a deadline; that's intended there.
 "tests/**" = ["ASYNC109", "ASYNC110"]
-# Standalone examples that should also run on older Pythons (timezone.utc, no UTC).
-"examples/**" = ["UP017"]
 
 [tool.mypy]
 strict = true

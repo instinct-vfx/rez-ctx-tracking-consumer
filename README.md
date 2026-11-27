@@ -74,8 +74,6 @@ The consumer's health and metrics are at <http://localhost:9100/healthz> and
 - [docs/operations.md](docs/operations.md): deploying, the configuration
   reference, rez setup, delivery guarantees, metrics and alerts, sizing, upgrades,
   removing old data, mapping extra fields to columns, troubleshooting.
-- [examples/minimal-consumer/](examples/minimal-consumer/): the same idea in a
-  single script (pika and psycopg2), as a starting point or for learning.
 - [PLAN.md](PLAN.md): design decisions and how the project was built.
 
 Grafana dashboards on top of the table, a local stack with a broker and a

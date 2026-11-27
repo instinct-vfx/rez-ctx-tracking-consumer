@@ -134,7 +134,6 @@ context_tracking_amqp = {
 ```
 pyproject.toml                 # uv, ruff, mypy, pytest
 Dockerfile                     # python:3.13-slim, multi-stage uv build, non-root
-examples/minimal-consumer/     # the same idea in one script (pika, psycopg2)
 src/rez_ctx_consumer/
   __main__.py                  # entrypoint
   app.py                       # task wiring, signal handling
