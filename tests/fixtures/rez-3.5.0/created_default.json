@@ -1,0 +1,57 @@
+{
+  "rez_version": "3.5.0",
+  "routing_key": "REZ.CONTEXT.CREATED",
+  "payload": {
+    "action": "created",
+    "context": {
+      "resolved_packages": [
+        {
+          "key": "filesystem.variant",
+          "variables": {
+            "location": "/studio/packages",
+            "name": "bar",
+            "version": "2.1.0",
+            "index": null,
+            "repository_type": "filesystem"
+          }
+        },
+        {
+          "key": "filesystem.variant",
+          "variables": {
+            "location": "/studio/packages",
+            "name": "baz",
+            "version": "1.2",
+            "index": null,
+            "repository_type": "filesystem"
+          }
+        },
+        {
+          "key": "filesystem.variant",
+          "variables": {
+            "location": "/studio/packages",
+            "name": "foo",
+            "version": "1.0.0",
+            "index": 0,
+            "repository_type": "filesystem"
+          }
+        }
+      ],
+      "timestamp": 1795214705,
+      "implicit_packages": [
+        "~platform==windows",
+        "~arch==AMD64",
+        "~os==windows-10.0.26300.SP0"
+      ],
+      "package_requests": [
+        "foo"
+      ],
+      "status": "solved",
+      "from_cache": false,
+      "solve_time": 0.016028881072998047,
+      "load_time": 0.0
+    },
+    "rez_version": "3.5.0",
+    "host": "ws01.example.com",
+    "user": "artist"
+  }
+}
