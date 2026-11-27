@@ -39,7 +39,8 @@ order doesn't matter.
 
 ## Deploying
 
-The image is built from the repository's `Dockerfile` and is configured only
+The image is built from the repository's `Dockerfile` (releases are published as
+`ghcr.io/instinct-vfx/rez-ctx-tracking-consumer`) and is configured only
 through environment variables. `AMQP_URL` and `PG_DSN` are required:
 
 ```sh
@@ -48,11 +49,12 @@ docker run -d --name rez-ctx-consumer \
   -e PG_DSN=postgresql://rez_tracking:secret@db.example:5432/pipeline \
   -p 9100:9100 \
   --stop-timeout 15 \
-  rez-ctx-tracking-consumer
+  ghcr.io/instinct-vfx/rez-ctx-tracking-consumer:0.1.0
 ```
 
-`docker-compose.yml` in the repository is a complete local stack and shows the
-same settings.
+The repository has no compose file for a full stack with PostgreSQL, a broker
+and dashboards. [rez-in-a-box](https://github.com/instinct-vfx/rez-in-a-box)
+runs this image in one, with Grafana dashboards, demo data and rez installs.
 
 ### Postgres
 

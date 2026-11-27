@@ -19,13 +19,30 @@ The consumer creates its own schema and monthly partitions; no extensions needed
 
 ## Quick start
 
+You need a PostgreSQL database and an AMQP broker. The consumer is a Docker
+image, configured with environment variables (`AMQP_URL` and `PG_DSN` are
+required; see [docs/operations.md](docs/operations.md) for the rest):
+
 ```sh
-docker compose up -d --build     # PostgreSQL, RabbitMQ and the consumer
-docker compose up -d postgres    # or: just a database for testing
+docker run -d --name rez-ctx-consumer \
+  -e AMQP_URL=amqp://rez:rez@broker.example:5672/ \
+  -e PG_DSN=postgresql://rez:rez@db.example:5432/rez \
+  -p 9100:9100 \
+  --stop-timeout 15 \
+  ghcr.io/instinct-vfx/rez-ctx-tracking-consumer:0.1.0
 ```
 
-Copy `.env.example` to `.env` to change credentials or host ports. Then point rez
-at the broker (e.g. in a `rezconfig.py` referenced by `REZ_CONFIG_FILE`):
+To build the image yourself, run `docker build -t rez-ctx-tracking-consumer .`.
+Without Docker, `uv sync && uv run rez-ctx-consumer` runs the same service from
+a checkout (Python 3.12 or newer).
+
+No database or broker at hand? [rez-in-a-box](https://github.com/instinct-vfx/rez-in-a-box)
+starts RabbitMQ, PostgreSQL, this consumer and example Grafana dashboards with
+one command, together with a rez install that is already configured for them.
+
+## Configuring rez
+
+Point rez at the broker (e.g. in a `rezconfig.py` referenced by `REZ_CONFIG_FILE`):
 
 ```python
 context_tracking_host = "localhost:5672"
@@ -42,13 +59,12 @@ context_tracking_amqp = {
 Every `rez-env` (and every load of an `.rxt` file) now produces a row:
 
 ```sh
-docker compose exec postgres psql -U rez -c "
+psql "$PG_DSN" -c "
   SELECT received_at, action, username, host, status, resolved_packages
   FROM rez_context_event ORDER BY received_at DESC LIMIT 10"
 ```
 
-The RabbitMQ management UI is at <http://localhost:15672> (rez / rez), and the
-consumer's health and metrics are at <http://localhost:9100/healthz> and
+The consumer's health and metrics are at <http://localhost:9100/healthz> and
 <http://localhost:9100/metrics>.
 
 ## Documentation
@@ -58,7 +74,13 @@ consumer's health and metrics are at <http://localhost:9100/healthz> and
 - [docs/operations.md](docs/operations.md): deploying, the configuration
   reference, rez setup, delivery guarantees, metrics and alerts, sizing, upgrades,
   removing old data, mapping extra fields to columns, troubleshooting.
+- [examples/minimal-consumer/](examples/minimal-consumer/): the same idea in a
+  single script (pika and psycopg2), as a starting point or for learning.
 - [PLAN.md](PLAN.md): design decisions and how the project was built.
+
+Grafana dashboards on top of the table, a local stack with a broker and a
+database, and demo data are in
+[rez-in-a-box](https://github.com/instinct-vfx/rez-in-a-box).
 
 ## Development
 
@@ -70,7 +92,7 @@ uv sync                    # create .venv with runtime + dev dependencies
 uv run pytest              # unit + integration tests
 uv run pytest -m "not integration"            # unit tests only
 POSTGRES_IMAGE=postgres:15 uv run pytest -m integration   # other Postgres version
-uv run pytest -m e2e       # real rez against the compose stack (builds images)
+uv run pytest -m e2e       # real rez, RabbitMQ, the image and Postgres (builds images)
 uv run ruff check          # lint
 uv run ruff format         # format
 uv run mypy                # type-check

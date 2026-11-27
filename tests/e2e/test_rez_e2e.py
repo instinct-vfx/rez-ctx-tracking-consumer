@@ -1,6 +1,7 @@
 """Real rez -> RabbitMQ -> consumer (Docker image) -> Postgres.
 
-Runs the docker-compose stack plus a rez client container (tests/e2e/rez/),
+Runs the stack in tests/e2e/compose.yml (RabbitMQ, Postgres, the consumer image)
+plus a rez client container (tests/e2e/rez/),
 which runs a fixed set of rez commands (run.sh). Then checks that exactly the
 expected events were stored. Opt-in because it builds images: ``pytest -m e2e``.
 """
@@ -28,7 +29,7 @@ if sys.platform == "win32":
     # "outside the project"; normalise e.g. c:\dev -> C:\dev.
     REPO = Path(str(REPO)[0].upper() + str(REPO)[1:])
 
-COMPOSE_FILES = ["docker-compose.yml", "tests/e2e/compose.yml"]
+COMPOSE_FILES = ["tests/e2e/compose.yml"]
 CREDENTIALS = {"POSTGRES_DB": "rez", "POSTGRES_USER": "rez", "POSTGRES_PASSWORD": "rez"}
 
 

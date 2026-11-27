@@ -134,8 +134,7 @@ context_tracking_amqp = {
 ```
 pyproject.toml                 # uv, ruff, mypy, pytest
 Dockerfile                     # python:3.13-slim, multi-stage uv build, non-root
-docker-compose.yml             # postgres:17, rabbitmq:4-management, consumer
-.env.example
+examples/minimal-consumer/     # the same idea in one script (pika, psycopg2)
 src/rez_ctx_consumer/
   __main__.py                  # entrypoint
   app.py                       # task wiring, signal handling
@@ -154,7 +153,7 @@ tests/
   fixtures/rez-<version>/      # real rez messages, captured by tools/
   unit/
   integration/                 # testcontainers: RabbitMQ + Postgres
-  e2e/                         # real rez -> broker -> consumer -> Postgres
+  e2e/                         # real rez -> broker -> consumer image -> Postgres (own compose.yml)
 tools/
   capture_rez_fixtures.py      # records rez's actual message bodies (needs rez installed)
 ```
@@ -184,16 +183,18 @@ tools/
    - `aio_pika.connect_robust()` leaks its reconnect task when the first attempt
      times out or is cancelled, so the consumer creates the `RobustConnection`
      itself and closes it when an attempt fails.
-5. **Container and operations** (done). docker-compose (`docker compose up
-   postgres` starts just a test DB), `.env.example`, healthcheck, metrics.
+5. **Container and operations** (done). The Docker image, healthcheck, metrics.
+   (A local stack with PostgreSQL and a broker is not part of this repository,
+   see phase 8.)
    `/healthz` is 503 until the service is ready, while the broker is
    disconnected, and once storing has failed for 60 s. An idle consumer is
    healthy. The HTTP server is plain asyncio (two read-only endpoints need no
    framework); the Docker `HEALTHCHECK` uses `rez-ctx-consumer healthcheck`,
    because the slim image has no curl.
 6. **End to end** (done). `tests/e2e/` adds a rez client container (rez 3.5.0
-   via pip, a tiny package repository, and the README's rezconfig) to the
-   compose stack. It runs `rez-env`, `rez-env --output`, `rez-env --input` and a
+   via pip, a tiny package repository, and the README's rezconfig) to a compose
+   stack of its own (`tests/e2e/compose.yml`: Postgres, RabbitMQ, the consumer
+   image). It runs `rez-env`, `rez-env --output`, `rez-env --input` and a
    conflicting `rez-env`. The test checks that exactly those four events land in
    Postgres: three `created` (one `failed`) and one `sourced`, with the extra
    field expanded. It's opt-in (`pytest -m e2e`) and has its own CI job.
@@ -205,3 +206,12 @@ tools/
    sizing (measured: about 2 KB per event, about 1,400 events/s drain rate),
    upgrades, removing old partitions (the recipe is tested), mapping extra
    fields to columns, and troubleshooting.
+8. **Scope** (done). This repository is only the consumer: the Python package
+   and its Docker image, published to GHCR on `v*` tags
+   (`.github/workflows/release.yml`). The things around it live in
+   [rez-in-a-box](https://github.com/instinct-vfx/rez-in-a-box): the local
+   stack (PostgreSQL, broker, this image), the example Grafana dashboards, the
+   demo data seeder and a rez install configured for all of it. They were built
+   here first and moved out, so that this project stays small and
+   deployment-agnostic. The seeder uses this package's parser and database
+   code, so rez-in-a-box pins an exact image version.

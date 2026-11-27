@@ -1,14 +1,65 @@
-# Override for the end-to-end test, used on top of the main docker-compose.yml:
-#   docker compose -f docker-compose.yml -f tests/e2e/compose.yml run --rm rez
-# Paths are relative to the repository root (the directory of the first file).
+# The stack of the end-to-end test (tests/e2e/test_rez_e2e.py): PostgreSQL,
+# RabbitMQ, the consumer built from this repository, and a rez client.
+#   docker compose -f tests/e2e/compose.yml run --rm rez
+# Host ports and credentials come from the environment (the test sets them to
+# free ports). Paths are relative to this file.
 
 services:
-  consumer:
+  postgres:
+    image: postgres:17
     environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rez}
+      POSTGRES_USER: ${POSTGRES_USER:-rez}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rez}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-rez}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rez}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  consumer:
+    build:
+      context: ../..
+    image: rez-ctx-tracking-consumer:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      AMQP_URL: amqp://${RABBITMQ_USER:-rez}:${RABBITMQ_PASSWORD:-rez}@rabbitmq:5672/
+      PG_DSN: postgresql://${POSTGRES_USER:-rez}:${POSTGRES_PASSWORD:-rez}@postgres:5432/${POSTGRES_DB:-rez}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
       BATCH_MAX_WAIT_MS: "200"
+    ports:
+      - "${METRICS_PORT:-9100}:9100"
+    # Must exceed SHUTDOWN_TIMEOUT_S (default 8 s) so a stop can finish storing.
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "rez-ctx-consumer", "healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
 
   rez:
-    build: tests/e2e/rez
+    build: rez
     image: rez-ctx-tracking-e2e-rez:local
     depends_on:
       consumer:
